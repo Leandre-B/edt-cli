@@ -214,13 +214,6 @@ for (( i=0 ; i<${#titres_cours[@]} ; i++ ));do
     start_time=$(cut -d ' ' -f2 <<< "${dates_debut_cours[$i]}")
     end_time=$(cut -d ' ' -f2 <<< "${dates_fin_cours[$i]}")
 
-    # Récupère le jour du prochaine cours
-    if [[ $i -lt $(( ${#titres_cours[@]} -1 ))  ]];then
-        next_day=$(cut -d '/' -f1 <<< "${dates_debut_cours[$(($i+1))]}")
-    else
-        next_day=$day
-    fi
-
     # Cours
     printf "|\e[1;33m ${titres_cours[$i]}"
 
@@ -233,6 +226,9 @@ for (( i=0 ; i<${#titres_cours[@]} ; i++ ));do
     d=$(date -d "$month/$day/$year $start_time" +"%A %d %B %H:%M")
     printf "\e[1;31m | \e[1;34m $d ->\e[1;34m $end_time \e[1;31m\n"
 
+    # Récupère le jour du prochaine cours
+    next_day=$(cut -d '/' -f1 <<< "${dates_debut_cours[$(($i+1))]}")
+
     # Si le cours suivant n'est pas le même jour
     # Print "---.." delimiteur de la taille du cours le plus long
     if [[ $day != $next_day ]];then
@@ -244,10 +240,6 @@ for (( i=0 ; i<${#titres_cours[@]} ; i++ ));do
 
 done
 
-# Print "---.." delimiteur de la taille du cours le plus long
-for (( k=0 ; k<(( ${#titres_cours[$longest]} + ${#dates_debut_cours[$longest]} + ${#dates_fin_cours[$longest]} + 13 )) ; ++k));do
-    printf "-"
-done
 
 # Remet les courleurs par défaut
 printf "\e[0m\n\n"
