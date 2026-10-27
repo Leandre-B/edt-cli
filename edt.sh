@@ -1,10 +1,11 @@
-# If no flag -> timetable of this week
+# Si pas d'option -> comportement par défaut
+# affiche l'edt de la semaine courante
 if [[ $# -eq 0 ]];then
     start=$(date -d "-$(( $(date +%u) - 1 )) days" +"%Y%m%d")
     end=$(date -d "$start + 4 days" +"%Y%m%d")
 fi
 
-# Check flag
+# ==== Traitement des options ====
 while [[ $# -ne 0 ]];do
     case $1 in
 
@@ -76,40 +77,39 @@ edt.sh - affiche l'emploi du temps (UA)
         --week)
             shift
 
-            # If $1 is a sign integer
+            # Si $1 est un entier signé (commande du type --week +2 où $1 = +2)
             if [[ $1 =~ ^[+-]?[0-9]+$ ]];then
 
-                # Start of the week (monday)
-                # If current day is friday, do :
-                #   date -d "-4 days"
-                # where 4 is calculated with :
-                #   index of current day -1
-                # Can check week before (or after) by adding +-7
+                # Determine la date du 1er jour de la semaine (lundi)
+                # en fonction de la date courante
+
+                # ex : nous sommes vendredi (jour 5) et je veux l'edt dans 2 semaines : 
+                # start = date - (5-1)_jours + 7_jours * 2  
 
                 start=$(date -d "-$(( $(date +%u) - 1 )) days + $(($1*7)) days" +"%Y%m%d")
 
-            # If not, get current week
+            # Sinon, semaine courante
             else
                 start=$(date -d "-$(( $(date +%u) - 1 )) days" +"%Y%m%d")
             fi
 
-            # End is friday, so start + 4 days
+            # start + 4_jours
             end=$(date -d "$start + 4 days" +"%Y%m%d")
             break;;
 
         --today)
             shift
 
-            # If $1 is a sign integer
+            # Si $1 est un entier signé (commande du type --today +2 où $1 = +2)
             if [[ $1 =~ ^[+-]?[0-9]+$ ]];then
                 start=$(date -d "$1 days" +"%Y%m%d")
 
-            #If not, get current day
+            # Sinon, jour courant
             else
                 start=$(date +"%Y%m%d")
             fi
 
-            # We only want 1 day
+            # On ne veut seulement qu'un jour
             end=$start
             break
             ;;
@@ -121,47 +121,60 @@ edt.sh - affiche l'emploi du temps (UA)
     esac
     shift # Get next flag
 done
+# ==== Fin du traitement des options ====
 
-# Exit if start or end are empty
+# Exit si start ou end sont vides
 if [[ -z $start ]] || [[ -z $end ]];then
     printf "ERROR : CHEK --help\n"
     exit 1
 fi
 
 
-# Id of group, replace by your own
+# L'id du group par défault - peut être remplacer par le votre
 id=G1D5BCAFF9A044378E0632110A8C0D50C
 
-# Json response of the timetable
+# JSON de l'EDT
+# requete POST
+# dates de la forme 'YYYYMMDD' 
 raw=$(curl -s https://edt.univ-angers.fr/edt/jsonSemaine --data 'id='$id'&dateDebut='$start'&dateFin='$end)
+
+# Si y'a aucun cours raw='[]'
+if [[ ${#raw} -eq 2 ]];then
+    echo Nothing
+    exit
+fi
 
 
 # Parse json
-mapfile -t subject <<< "$(grep -Eo "\"titre\":([^-]*-){3}" <<< "$raw" | sed 's/"titre":"//')"
+# Construction de 3 tableaux
 
-mapfile -t timetable_start <<<"$(grep -Eo "\"date_debut\":\".{16}" <<< "$raw"| sed 's/"date_debut":"//')"
+# Intitulés des cours
+mapfile -t titres_cours <<< "$(grep -Eo "\"titre\":([^-]*-){3}" <<< "$raw" | sed 's/"titre":"//')"
 
-mapfile -t timetable_end <<<"$(grep -Eo "\"date_fin\":\".{16}" <<< "$raw" | sed 's/"date_fin":"//')"
+# Intitulé du cours
+mapfile -t dates_debut_cours <<<"$(grep -Eo "\"date_debut\":\".{16}" <<< "$raw"| sed 's/"date_debut":"//')"
 
+# Intitulé du cours
+mapfile -t dates_fin_cours <<<"$(grep -Eo "\"date_fin\":\".{16}" <<< "$raw" | sed 's/"date_fin":"//')"
 
-# Sort by time (sorted by subject in the json)
-# Just a regular bubble sort
-for (( i=0 ; i<(( ${#subject[@]} -1 )) ; i++ ));do
-    for (( j=$i ; j<${#subject[@]} ; j++ ));do
+# On trie les tableaux ordre chronologique
+# Classique bubble sort
+for (( i=0 ; i<(( ${#titres_cours[@]} -1 )) ; i++ ));do
+    for (( j=$i ; j<${#titres_cours[@]} ; j++ ));do
 
-        if [[  ${timetable_start[$i]} > ${timetable_start[$j]} ]];then
+        if [[  ${dates_debut_cours[$i]} > ${dates_debut_cours[$j]} ]];then
 
-            aux=${subject[$i]}
-            subject[$i]=${subject[$j]}
-            subject[$j]=$aux
+            aux=${titres_cours[$i]}
+            titres_cours[$i]=${titres_cours[$j]}
+            titres_cours[$j]=$aux
 
-            aux=${timetable_start[$i]}
-            timetable_start[$i]=${timetable_start[$j]}
-            timetable_start[$j]=$aux
+            aux=${dates_debut_cours[$i]}
+            dates_debut_cours[$i]=${dates_debut_cours[$j]}
+            dates_debut_cours[$j]=$aux
 
-            aux=${timetable_end[$i]}
-            timetable_end[$i]=${timetable_end[$j]}
-            timetable_end[$j]=$aux
+            aux=${dates_fin_cours[$i]}
+            dates_fin_cours[$i]=${dates_fin_cours[$j]}
+            dates_fin_cours[$j]=$aux
 
         fi
 
@@ -169,64 +182,61 @@ for (( i=0 ; i<(( ${#subject[@]} -1 )) ; i++ ));do
 
 done
 
-# Get index of longest subject string (for better formating later)
+# ===== Affichage console ======
+
+# Période de l'EDT choisie (start et end)
+printf "\n$(date -d "$start" +"%A %d %B") - $(date -d "$end" +"%A %d %B")\n"
+
+
+printf "\e[1;31m"
+
+# Récupére l'index du plus long cours (taille de la string)
 longest=0
-for (( i=1 ; i<${#subject[@]} ; i++ ));do
-    if [[ ${#subject[$i]} -gt ${#subject[$longest]}  ]];then
+for (( i=1 ; i<${#titres_cours[@]} ; i++ ));do
+    if [[ ${#titres_cours[$i]} -gt ${#titres_cours[$longest]}  ]];then
         longest=$i
     fi
 done
 
-# If no subject (ie : longest==0)
-if [[ ${#subject[$longest]} -eq 0 ]];then
-    echo Nothing
-    exit
-fi
-
-######## OUTPUT #########
-
-# Print range of timetable
-printf "\n$(date -d "$start" +"%A %d %B") - $(date -d "$end" +"%A %d %B")\n"
-
-
-printf "\e[1;31m" #color
-
-# Print "---.." delimiter according to the length of the longest string
-for (( k=0 ; k<(( ${#subject[$longest]} + ${#timetable_start[$longest]} + ${#timetable_end[$longest]} + 13 )) ; ++k));do
+# Print "---.." delimiteur de la taille du cours le plus long
+for (( k=0 ; k<(( ${#titres_cours[$longest]} + ${#dates_debut_cours[$longest]} + ${#dates_fin_cours[$longest]} + 13 )) ; ++k));do
     printf "-"
 done
+
 echo
-# Loop trougth subject
-for (( i=0 ; i<${#subject[@]} ; i++ ));do
+# pour tout les cours
+for (( i=0 ; i<${#titres_cours[@]} ; i++ ));do
 
-    # Get infos
-    day=$(cut -d '/' -f1 <<< "${timetable_start[$i]}")
-    month=$(cut -d '/' -f2 <<< "${timetable_start[$i]}")
-    year=$(grep -Eo "[0-9]{4}" <<< "${timetable_start[$i]}")
-    start_time=$(cut -d ' ' -f2 <<< "${timetable_start[$i]}")
-    end_time=$(cut -d ' ' -f2 <<< "${timetable_end[$i]}")
+    # Récuperer les infos
+    day=$(cut -d '/' -f1 <<< "${dates_debut_cours[$i]}")
+    month=$(cut -d '/' -f2 <<< "${dates_debut_cours[$i]}")
+    year=$(grep -Eo "[0-9]{4}" <<< "${dates_debut_cours[$i]}")
+    start_time=$(cut -d ' ' -f2 <<< "${dates_debut_cours[$i]}")
+    end_time=$(cut -d ' ' -f2 <<< "${dates_fin_cours[$i]}")
 
-    if [[ $i -lt $(( ${#subject[@]} -1 ))  ]];then
-        next_day=$(cut -d '/' -f1 <<< "${timetable_start[$(($i+1))]}")
+    # Récupère le jour du prochaine cours
+    if [[ $i -lt $(( ${#titres_cours[@]} -1 ))  ]];then
+        next_day=$(cut -d '/' -f1 <<< "${dates_debut_cours[$(($i+1))]}")
     else
         next_day=$day
     fi
 
-    # Newline with color
-    printf "|\e[1;33m ${subject[$i]}"
+    # Cours
+    printf "|\e[1;33m ${titres_cours[$i]}"
 
-    #fill with space for better formating
-    for (( k=${#subject[$i]} ; k<${#subject[$longest]} ; ++k));do
+    # Ajout d'espace pour aligner avec la taille du plus long cours
+    for (( k=${#titres_cours[$i]} ; k<${#titres_cours[$longest]} ; ++k));do
         printf " "
     done
 
-    #print time
+    # Date
     d=$(date -d "$month/$day/$year $start_time" +"%A %d %B %H:%M")
     printf "\e[1;31m | \e[1;34m $d ->\e[1;34m $end_time \e[1;31m\n"
 
-    # Same as the other on above
+    # Si le cours suivant n'est pas le même jour
+    # Print "---.." delimiteur de la taille du cours le plus long
     if [[ $day != $next_day ]];then
-        for (( k=0 ; k<(( ${#subject[$longest]} + ${#timetable_start[$longest]} + ${#timetable_end[$longest]} + 13 )) ; ++k));do
+        for (( k=0 ; k<(( ${#titres_cours[$longest]} + ${#dates_debut_cours[$longest]} + ${#dates_fin_cours[$longest]} + 13 )) ; ++k));do
             printf "-"
         done
         echo
@@ -234,9 +244,10 @@ for (( i=0 ; i<${#subject[@]} ; i++ ));do
 
 done
 
-for (( k=0 ; k<(( ${#subject[$longest]} + ${#timetable_start[$longest]} + ${#timetable_end[$longest]} + 13 )) ; ++k));do
+# Print "---.." delimiteur de la taille du cours le plus long
+for (( k=0 ; k<(( ${#titres_cours[$longest]} + ${#dates_debut_cours[$longest]} + ${#dates_fin_cours[$longest]} + 13 )) ; ++k));do
     printf "-"
 done
 
-# Set colors to default
+# Remet les courleurs par défaut
 printf "\e[0m\n\n"
