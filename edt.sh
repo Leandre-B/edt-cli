@@ -34,16 +34,11 @@ edt.sh - affiche l'emploi du temps (UA)
         ./edt.sh --id G0B74A7B09B714798E0632110A8C09B7A
 
 
-    --end YYYYMMDD
-        Spécifie la fin de la plage à visuliser.
-        Format : YYYYMMDD
+    --date YYYYMMDD YYYYMMDD
+        Spécifie la plage à visualiser (debut fin).
 
     --id (id)
         Spécifie l'id du groupe (voir détail au dessus).
-
-    --start YYYYMMDD
-        Spécifie le début de la plage à visuliser.
-        Format : YYYYMMDD
 
     --today [INTEGER]
         Affiche l'edt du jour +/-INTERGER (ou courant si non spécifié).
@@ -64,12 +59,10 @@ edt.sh - affiche l'emploi du temps (UA)
             exit
 
         ;;
-        --start)
+        --date)
             shift
             start=$1
-            ;;
-
-        --end)
+            
             shift
             end=$1
             ;;
